@@ -1,0 +1,4 @@
+-keep class org.maplibre.** { *; }
+-dontwarn org.maplibre.**
+-dontwarn okhttp3.**
+-dontwarn okio.**

@@ -27,7 +27,9 @@ import com.rynekryz.rynemaps.data.GeoPoint
 import com.rynekryz.rynemaps.data.MapTap
 import com.rynekryz.rynemaps.data.Place
 import com.rynekryz.rynemaps.ui.CameraCommand
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.maplibre.android.camera.CameraPosition
@@ -282,13 +284,16 @@ fun RyMapView(
     }
 
     LaunchedEffect(route, styleVersion) {
-        holder.style?.getSourceAs<GeoJsonSource>(ROUTE_SRC)?.setGeoJson(lineJson(route))
+        val json = withContext(Dispatchers.Default) { lineJson(route) }
+        holder.style?.getSourceAs<GeoJsonSource>(ROUTE_SRC)?.setGeoJson(json)
     }
     LaunchedEffect(markers, styleVersion) {
-        holder.style?.getSourceAs<GeoJsonSource>(MARKERS_SRC)?.setGeoJson(pointsJson(markers))
+        val json = withContext(Dispatchers.Default) { pointsJson(markers) }
+        holder.style?.getSourceAs<GeoJsonSource>(MARKERS_SRC)?.setGeoJson(json)
     }
     LaunchedEffect(selected, styleVersion) {
-        holder.style?.getSourceAs<GeoJsonSource>(SELECTED_SRC)?.setGeoJson(pointsJson(listOfNotNull(selected)))
+        val json = withContext(Dispatchers.Default) { pointsJson(listOfNotNull(selected)) }
+        holder.style?.getSourceAs<GeoJsonSource>(SELECTED_SRC)?.setGeoJson(json)
     }
 
     LaunchedEffect(attributionBottomPx, mapReady) {

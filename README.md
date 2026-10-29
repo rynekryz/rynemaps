@@ -50,6 +50,10 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 - Saved places store, kept on device only
 - Handles `geo:` URIs from other apps
 - Location-aware search results (queries nearby coordinates)
+- On-device voice guidance for turn-by-turn navigation (offline text-to-speech)
+- Google Maps-style account button: tap your profile photo in the search bar to open settings
+- Settings for voice guidance, distance units (auto/km/miles) and theme, plus one-tap search history clearing
+- Profile photo is picked from your gallery and saved locally only
 - Proper `User-Agent` header for OpenStreetMap API set of tools etiquette
 - Material design 3 with adaptive navigation, dark & light mode support
 - Minimum Android 12 (API 31), targeting API 37
@@ -66,7 +70,7 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 | [OSRM](https://routing.openstreetmap.de/) | Routing |
 | [MapLibre](https://maplibre.org/) | Map rendering |
 
-All free, public, and key-free — which is what keeps RyMaps privacy-respecting by design.
+All free, public, and key-free, which is what keeps RyMaps privacy-respecting by design.
 
 ## License
 

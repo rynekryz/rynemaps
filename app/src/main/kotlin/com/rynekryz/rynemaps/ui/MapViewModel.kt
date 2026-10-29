@@ -1,6 +1,7 @@
 package com.rynekryz.rynemaps.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -19,8 +20,15 @@ import com.rynekryz.rynemaps.data.MapTap
 import com.rynekryz.rynemaps.data.Place
 import com.rynekryz.rynemaps.data.RouteInfo
 import com.rynekryz.rynemaps.data.SavedStore
+import com.rynekryz.rynemaps.data.Settings
+import com.rynekryz.rynemaps.data.SettingsStore
+import com.rynekryz.rynemaps.data.ThemeMode
 import com.rynekryz.rynemaps.data.TravelMode
+import com.rynekryz.rynemaps.data.UnitsMode
+import com.rynekryz.rynemaps.data.VoiceGuide
+import com.rynekryz.rynemaps.util.imperialCountries
 import com.rynekryz.rynemaps.util.toGeo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,6 +42,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
+import kotlin.math.roundToInt
 
 enum class Tab { Explore, Saved }
 
@@ -96,10 +107,18 @@ data class UiState(
 @OptIn(FlowPreview::class)
 class MapViewModel(app: Application) : AndroidViewModel(app) {
     private val store = SavedStore(app)
+    private val settingsStore = SettingsStore(app)
     private val locations = LocationRepository(app)
+    private val voiceGuide = VoiceGuide(app)
 
     private val _state = MutableStateFlow(UiState(saved = store.saved(), recents = store.recents()))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    private val _settings = MutableStateFlow(settingsStore.load())
+    val settings: StateFlow<Settings> = _settings.asStateFlow()
+
+    private val _avatar = MutableStateFlow<Bitmap?>(null)
+    val avatar: StateFlow<Bitmap?> = _avatar.asStateFlow()
 
     private val _camera = MutableSharedFlow<CameraCommand>(replay = 1, extraBufferCapacity = 16)
     val camera: SharedFlow<CameraCommand> = _camera.asSharedFlow()
@@ -115,8 +134,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private var viewport: GeoBounds? = null
     private var lastGps = 0L
     private var offRouteCount = 0
+    private var announcedStep = -1
+    private var announcedNear = false
+    private var announcedArrive = false
 
     init {
+        viewModelScope.launch {
+            _avatar.value = withContext(Dispatchers.IO) { settingsStore.readAvatar() }
+        }
         viewModelScope.launch {
             queryFlow.debounce(300).distinctUntilChanged().collectLatest { q ->
                 if (q.isBlank()) {
@@ -134,6 +159,53 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        voiceGuide.enabled = _settings.value.voice
+    }
+
+    override fun onCleared() {
+        voiceGuide.close()
+        super.onCleared()
+    }
+
+    fun setVoice(on: Boolean) {
+        voiceGuide.enabled = on
+        if (!on) voiceGuide.stop()
+        updateSettings { it.copy(voice = on) }
+    }
+
+    fun setUnits(units: UnitsMode) = updateSettings { it.copy(units = units) }
+
+    fun setTheme(theme: ThemeMode) = updateSettings { it.copy(theme = theme) }
+
+    private fun updateSettings(transform: (Settings) -> Settings) {
+        val next = transform(_settings.value)
+        _settings.value = next
+        settingsStore.save(next)
+    }
+
+    fun setAvatar(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bmp = runCatching { settingsStore.setAvatar(uri) }.getOrNull()
+            if (bmp != null) {
+                _avatar.value = bmp
+                updateSettings { it.copy(avatarVersion = it.avatarVersion + 1) }
+            } else {
+                _toasts.tryEmit("Couldn't use this image")
+            }
+        }
+    }
+
+    fun removeAvatar() {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsStore.removeAvatar()
+            _avatar.value = null
+            updateSettings { it.copy(avatarVersion = it.avatarVersion + 1) }
+        }
+    }
+
+    fun clearRecents() {
+        store.clearRecents()
+        _state.update { it.copy(recents = emptyList()) }
     }
 
     fun onPermission(granted: Boolean) {
@@ -226,8 +298,8 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pickMyLocation() {
-        val s = _state.value
-        val target = s.searchTarget
+        val target = _state.value.searchTarget
+        if (target != SearchTarget.Origin && target != SearchTarget.Destination) return
         _state.update {
             val d = it.directions ?: DirectionsState()
             it.copy(
@@ -416,6 +488,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         }
         val next = 1.coerceAtMost(route.steps.lastIndex).coerceAtLeast(0)
         offRouteCount = 0
+        announcedStep = -1
+        announcedNear = false
+        announcedArrive = false
+        voiceGuide.speak("Starting route")
         _state.update {
             it.copy(
                 navigation = NavState(
@@ -432,6 +508,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exitNavigation() {
+        voiceGuide.stop()
         _state.update { it.copy(navigation = null) }
         _camera.tryEmit(CameraCommand.Follow(on = false))
         _camera.tryEmit(CameraCommand.ResetNorth)
@@ -448,32 +525,75 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         val radius = maxOf(25.0, loc.speed * 2.5)
         var next = nav.nextStep.coerceIn(0, r.steps.lastIndex)
         while (next < r.steps.lastIndex && Geo.distance(p, r.steps[next].point) < radius) next++
+        val distNext = Geo.distance(p, r.steps[next].point)
         val arrived = Geo.distance(p, r.points.last()) < 30.0
         _state.update {
             it.copy(
                 navigation = nav.copy(
                     nextStep = next,
-                    distanceToNext = Geo.distance(p, r.steps[next].point),
+                    distanceToNext = distNext,
                     remainingDistance = r.distance * frac,
                     remainingDuration = r.duration * frac,
                     arrived = arrived,
                 )
             )
         }
+        announce(r, next, distNext, arrived)
         if (arrived || nav.rerouting) return
         if (proj.offset > 60.0) offRouteCount++ else offRouteCount = 0
         if (offRouteCount >= 3) reroute(loc)
+    }
+
+    private fun announce(r: RouteInfo, step: Int, dist: Double, arrived: Boolean) {
+        if (!voiceGuide.enabled) return
+        if (arrived) {
+            if (!announcedArrive) {
+                announcedArrive = true
+                voiceGuide.speak("You have arrived at your destination")
+            }
+            return
+        }
+        val text = r.steps[step].text
+        when (step) {
+            announcedStep -> if (!announcedNear && dist < 40.0) {
+                announcedNear = true
+                voiceGuide.speak(text)
+            }
+            else -> {
+                announcedStep = step
+                announcedNear = dist <= 60.0
+                if (announcedNear) voiceGuide.speak(text)
+                else if (dist <= 400.0) voiceGuide.speak("In ${spoken(dist)}, $text")
+            }
+        }
+    }
+
+    private fun spoken(meters: Double): String {
+        val imperial = when (_settings.value.units) {
+            UnitsMode.Miles -> true
+            UnitsMode.Km -> false
+            UnitsMode.Auto -> Locale.getDefault().country in imperialCountries
+        }
+        return if (imperial) {
+            val feet = meters * 3.28084
+            if (feet > 1600) "${(feet / 5280).roundToInt()} miles" else "${(feet / 100).roundToInt() * 100} feet"
+        } else {
+            if (meters > 1000) "${(meters / 1000).roundToInt()} kilometers" else "${(meters / 10).roundToInt() * 10} meters"
+        }
     }
 
     private fun reroute(loc: Location) {
         val d = _state.value.directions ?: return
         val dest = d.destination ?: return
         offRouteCount = 0
+        announcedStep = -1
+        voiceGuide.speak("Rerouting")
         _state.update { it.copy(navigation = it.navigation?.copy(rerouting = true)) }
         routeJob?.cancel()
         routeJob = viewModelScope.launch {
             runCatching { Api.route(loc.toGeo(), dest.point, d.mode) }
                 .onSuccess { route ->
+                    announcedNear = false
                     _state.update {
                         it.copy(
                             directions = it.directions?.copy(route = route),
@@ -487,7 +607,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                 }
-                .onFailure { _state.update { it.copy(navigation = it.navigation?.copy(rerouting = false)) } }
+                .onFailure {
+                    _state.update { it.copy(navigation = it.navigation?.copy(rerouting = false)) }
+                    _toasts.tryEmit("Rerouting failed. Check your connection.")
+                }
         }
     }
 

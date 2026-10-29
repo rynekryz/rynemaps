@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -58,12 +59,18 @@ import kotlin.math.abs
 @Composable
 fun RyMapsApp(vm: MapViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val avatar by vm.avatar.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
     val dark = isSystemInDarkTheme()
     var bearing by remember { mutableFloatStateOf(0f) }
     var sheetHeight by remember { mutableIntStateOf(0) }
     var showAbout by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.setAvatar(uri)
+    }
 
     val permissions = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
@@ -126,7 +133,8 @@ fun RyMapsApp(vm: MapViewModel) {
             Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp)) {
                 SearchPill(
                     onClick = { vm.openSearch(SearchTarget.Main) },
-                    onAvatar = { showAbout = true },
+                    onAvatar = { showSettings = true },
+                    avatar = avatar,
                 )
                 Spacer(Modifier.size(8.dp))
                 CategoryChips(state.activeCategory, vm::selectCategory)
@@ -273,6 +281,26 @@ fun RyMapsApp(vm: MapViewModel) {
             current = state.mapStyle ?: if (dark) MapStyleOption.Night else MapStyleOption.Default,
             onSelect = vm::setMapStyle,
             onDismiss = { vm.showLayers(false) },
+        )
+    }
+    if (showSettings) {
+        SettingsSheet(
+            settings = settings,
+            avatar = avatar,
+            recentsCount = state.recents.size,
+            onDismiss = { showSettings = false },
+            onVoice = vm::setVoice,
+            onUnits = vm::setUnits,
+            onTheme = vm::setTheme,
+            onPickPhoto = {
+                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onRemovePhoto = vm::removeAvatar,
+            onClearRecents = vm::clearRecents,
+            onAbout = {
+                showSettings = false
+                showAbout = true
+            },
         )
     }
     if (showAbout) AboutDialog { showAbout = false }

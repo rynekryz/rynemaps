@@ -4,12 +4,14 @@ package com.rynekryz.rynemaps.ui
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -35,6 +37,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
@@ -44,7 +48,7 @@ import com.rynekryz.rynemaps.data.Place
 import com.rynekryz.rynemaps.ui.theme.Symbol
 
 @Composable
-fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, modifier: Modifier = Modifier) {
+fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, avatar: android.graphics.Bitmap?, modifier: Modifier = Modifier) {
     Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -72,7 +76,16 @@ fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, modifier: Modifier = M
                     .clickable(onClick = onAvatar),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("R", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                if (avatar != null) {
+                    Image(
+                        bitmap = avatar.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Text("R", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
             }
         }
     }

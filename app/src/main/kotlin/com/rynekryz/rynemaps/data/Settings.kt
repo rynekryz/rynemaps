@@ -13,7 +13,7 @@ enum class UnitsMode(val label: String) { Auto("Auto"), Km("Km"), Miles("Mi") }
 enum class ThemeMode(val label: String) { System("System"), Light("Light"), Dark("Dark") }
 
 data class Settings(
-    val name: String = "Ryne",
+    val name: String = "",
     val voice: Boolean = true,
     val keepScreenOn: Boolean = true,
     val units: UnitsMode = UnitsMode.Auto,
@@ -30,8 +30,9 @@ class SettingsStore(private val context: Context) {
         val o = runCatching { JSONObject(prefs.getString("settings", "{}") ?: "{}") }.getOrNull() ?: return Settings()
         val units = runCatching { UnitsMode.valueOf(o.getString("units")) }.getOrDefault(UnitsMode.Auto)
         val theme = runCatching { ThemeMode.valueOf(o.getString("theme")) }.getOrDefault(ThemeMode.System)
+        val name = o.optString("name", "").take(24)
         return Settings(
-            name = o.optString("name", "Ryne"),
+            name = if (name == "Ryne") "" else name,
             voice = o.optBoolean("voice", true),
             keepScreenOn = o.optBoolean("keepScreenOn", true),
             units = units,

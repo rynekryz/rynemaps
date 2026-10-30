@@ -2,7 +2,9 @@ package com.rynekryz.rynemaps.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -61,11 +63,13 @@ private val RyShapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp),
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun RyMapsTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val context = LocalContext.current
     MaterialTheme(
         colorScheme = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
+        motionScheme = MotionScheme.expressive(),
         shapes = RyShapes,
         typography = RyTypography,
         content = content,

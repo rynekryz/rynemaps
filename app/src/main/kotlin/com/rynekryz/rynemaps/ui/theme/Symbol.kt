@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -57,6 +58,7 @@ fun Symbol(
             textAlign = TextAlign.Center,
             fontFeatureSettings = "liga",
             lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
         ),
         maxLines = 1,
         softWrap = false,

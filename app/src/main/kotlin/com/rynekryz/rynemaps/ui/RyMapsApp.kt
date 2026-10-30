@@ -14,18 +14,20 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
@@ -65,8 +67,14 @@ import com.rynekryz.rynemaps.ui.map.RyMapView
 import com.rynekryz.rynemaps.ui.theme.Symbol
 import kotlin.math.abs
 
+private val bouncySpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
 @Composable
 fun RyMapsApp(vm: MapViewModel) {
+    val haptics = rememberHaptics()
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val avatar by vm.avatar.collectAsStateWithLifecycle()
@@ -118,8 +126,8 @@ fun RyMapsApp(vm: MapViewModel) {
     val nav = state.navigation
     val directions = state.directions
     val navigating = nav != null
-    DisposableEffect(navigating, settings.keepScreenOn) {
-        view.keepScreenOn = navigating && settings.keepScreenOn
+    DisposableEffect(settings.keepScreenOn, navigating) {
+        view.keepScreenOn = settings.keepScreenOn
         onDispose { view.keepScreenOn = false }
     }
     BackHandler(enabled = state.canGoBack) { vm.back() }
@@ -129,23 +137,22 @@ fun RyMapsApp(vm: MapViewModel) {
     val pin = directions?.destination?.takeIf { it.id != MY_LOCATION.id } ?: state.selected
     val route = nav?.route?.points ?: directions?.route?.points
     val exploring = directions == null && state.tab == Tab.Explore
-    val showNav = nav == null && directions == null && state.selected == null && state.activeCategory == null
+    val showNav = nav == null && directions == null && state.selected == null
 
     Box(Modifier.fillMaxSize()) {
         RyMapView(
             styleUrl = styleUrl,
             route = route,
-            markers = if (directions == null) state.markers else emptyList(),
             selected = pin,
             location = state.location,
             hasPermission = state.hasPermission,
+            following = state.following,
             commands = vm.camera,
             attributionBottomPx = sheetHeight,
             onTap = vm::onMapTap,
             onLongPress = vm::onMapLongPress,
             onBearing = { bearing = it },
             onFollowing = vm::setFollowing,
-            onViewport = vm::setViewport,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -156,25 +163,23 @@ fun RyMapsApp(vm: MapViewModel) {
         if (exploring) {
             Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp)) {
                 SearchPill(
-                    onClick = { vm.openSearch(SearchTarget.Main) },
-                    onAvatar = { showSettings = true },
+                    onClick = { haptics.click(); vm.openSearch(SearchTarget.Main) },
+                    onAvatar = { haptics.click(); showSettings = true },
                     avatar = avatar,
                     name = settings.name,
                 )
-                Spacer(Modifier.size(8.dp))
-                CategoryChips(state.activeCategory, vm::selectCategory)
             }
-            Column(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 132.dp, end = 16.dp), horizontalAlignment = Alignment.End) {
+            Column(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 84.dp, end = 16.dp), horizontalAlignment = Alignment.End) {
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 4.dp,
                 ) {
                     Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(onClick = { vm.showLayers(true) }) { Symbol("layers") }
+                        IconButton(onClick = { haptics.click(); vm.showLayers(true) }) { Symbol("layers") }
                         if (abs(bearing) > 1f) {
                             HorizontalDivider(Modifier.padding(horizontal = 8.dp))
-                            IconButton(onClick = vm::resetNorth) { Symbol("navigation", modifier = Modifier.rotate(-bearing)) }
+                            IconButton(onClick = { haptics.tick(); vm.resetNorth() }) { Symbol("navigation", modifier = Modifier.rotate(-bearing)) }
                         }
                     }
                 }
@@ -203,9 +208,13 @@ fun RyMapsApp(vm: MapViewModel) {
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.End) {
                     if (nav != null) {
-                        if (!state.following) {
+                        AnimatedVisibility(
+                            visible = !state.following,
+                            enter = scaleIn(bouncySpring, initialScale = 0.6f) + fadeIn(),
+                            exit = fadeOut() + scaleOut(bouncySpring, targetScale = 0.6f),
+                        ) {
                             ExtendedFloatingActionButton(
-                                onClick = vm::follow,
+                                onClick = { haptics.click(); vm.follow() },
                                 icon = { Symbol("navigation") },
                                 text = { Text("Re-center") },
                                 containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -213,23 +222,40 @@ fun RyMapsApp(vm: MapViewModel) {
                             )
                         }
                     } else if (state.tab == Tab.Explore) {
-                        SmallFloatingActionButton(
-                            onClick = { locate() },
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = if (state.following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        ) { Symbol(if (state.following) "my_location" else "location_searching") }
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = scaleIn(bouncySpring, initialScale = 0.6f) + fadeIn(),
+                            exit = fadeOut() + scaleOut(bouncySpring, targetScale = 0.6f),
+                        ) {
+                            SmallFloatingActionButton(
+                                onClick = { haptics.click(); locate() },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = if (state.following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            ) { Symbol(if (state.following) "my_location" else "location_searching") }
+                        }
                         if (directions == null) {
-                            FloatingActionButton(
-                                onClick = { vm.startDirections(state.selected) },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ) { Symbol("directions", size = 28.dp) }
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = scaleIn(bouncySpring, initialScale = 0.6f) + fadeIn(),
+                                exit = fadeOut() + scaleOut(bouncySpring, targetScale = 0.6f),
+                            ) {
+                                FloatingActionButton(
+                                    onClick = { haptics.click(); vm.startDirections(state.selected) },
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ) { Symbol("directions", size = 28.dp) }
+                            }
                         }
                     }
                 }
             }
             Column(
-                Modifier.fillMaxWidth().animateContentSize().onSizeChanged { sheetHeight = it.height },
+                Modifier.fillMaxWidth().animateContentSize(
+                    spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    )
+                ).onSizeChanged { sheetHeight = it.height },
             ) {
                 when {
                     nav != null -> NavigationBottomBar(nav, onExit = vm::exitNavigation)
@@ -249,31 +275,24 @@ fun RyMapsApp(vm: MapViewModel) {
                         onSave = vm::toggleSaved,
                         onShare = { sharePlace(context, state.selected!!) },
                     )
-                    state.tab == Tab.Explore && state.activeCategory != null -> ResultsSheet(
-                        category = state.activeCategory!!,
-                        results = state.markers,
-                        loading = state.categoryLoading,
-                        onClose = vm::clearCategory,
-                        onSelect = { vm.selectPlace(it) },
-                    )
                 }
                 if (showNav) {
                     NavigationBar {
                         NavigationBarItem(
                             selected = state.tab == Tab.Explore,
-                            onClick = { vm.setTab(Tab.Explore) },
+                            onClick = { haptics.click(); vm.setTab(Tab.Explore) },
                             icon = { Symbol("explore") },
                             label = { Text("Explore") },
                         )
                         NavigationBarItem(
                             selected = false,
-                            onClick = { vm.startDirections(null) },
+                            onClick = { haptics.click(); vm.startDirections(null) },
                             icon = { Symbol("directions_car") },
                             label = { Text("Go") },
                         )
                         NavigationBarItem(
                             selected = state.tab == Tab.Saved,
-                            onClick = { vm.setTab(Tab.Saved) },
+                            onClick = { haptics.click(); vm.setTab(Tab.Saved) },
                             icon = { Symbol("bookmarks") },
                             label = { Text("Saved") },
                         )
@@ -284,8 +303,8 @@ fun RyMapsApp(vm: MapViewModel) {
 
         AnimatedVisibility(
             visible = state.searchTarget != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = scaleIn(bouncySpring, initialScale = 0.94f) + fadeIn(),
+            exit = fadeOut() + scaleOut(bouncySpring, targetScale = 0.94f),
         ) {
             SearchOverlay(
                 state = state,

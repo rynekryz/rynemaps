@@ -62,8 +62,9 @@ fun PlaceRow(
     modifier: Modifier = Modifier,
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    val haptics = rememberHaptics()
     Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier.fillMaxWidth().clickable { haptics.click(); onClick() }.padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconBadge(icon)

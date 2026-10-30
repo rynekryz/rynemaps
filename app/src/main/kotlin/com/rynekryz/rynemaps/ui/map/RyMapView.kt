@@ -22,7 +22,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.rynekryz.rynemaps.data.GeoBounds
 import com.rynekryz.rynemaps.data.GeoPoint
 import com.rynekryz.rynemaps.data.MapTap
 import com.rynekryz.rynemaps.data.Place
@@ -60,11 +59,9 @@ import org.maplibre.android.style.sources.GeoJsonSource
 
 private const val EMPTY = """{"type":"FeatureCollection","features":[]}"""
 private const val ROUTE_SRC = "ry-route-src"
-private const val MARKERS_SRC = "ry-markers-src"
 private const val SELECTED_SRC = "ry-selected-src"
 private const val ROUTE_CASING = "ry-route-casing"
 private const val ROUTE_LINE = "ry-route-line"
-private const val MARKERS_LAYER = "ry-markers-layer"
 private const val SELECTED_LAYER = "ry-selected-layer"
 private const val PIN = "ry-pin"
 private val ROUTE_BLUE = Color.parseColor("#1A73E8")
@@ -130,17 +127,16 @@ private fun pointsJson(places: List<Place>): String {
 fun RyMapView(
     styleUrl: String,
     route: List<GeoPoint>?,
-    markers: List<Place>,
     selected: Place?,
     location: Location?,
     hasPermission: Boolean,
+    following: Boolean,
     commands: Flow<CameraCommand>,
     attributionBottomPx: Int,
     onTap: (MapTap) -> Unit,
     onLongPress: (GeoPoint) -> Unit,
     onBearing: (Float) -> Unit,
     onFollowing: (Boolean) -> Unit,
-    onViewport: (GeoBounds) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -153,15 +149,14 @@ fun RyMapView(
     val longCb by rememberUpdatedState(onLongPress)
     val bearingCb by rememberUpdatedState(onBearing)
     val followCb by rememberUpdatedState(onFollowing)
-    val viewportCb by rememberUpdatedState(onViewport)
     val permissionNow by rememberUpdatedState(hasPermission)
+    val followingNow by rememberUpdatedState(following)
     val pinImage = remember { pinBitmap(density) }
 
     fun setupStyle(style: Style) {
         holder.style = style
         style.addImage(PIN, pinImage)
         style.addSource(GeoJsonSource(ROUTE_SRC, EMPTY))
-        style.addSource(GeoJsonSource(MARKERS_SRC, EMPTY))
         style.addSource(GeoJsonSource(SELECTED_SRC, EMPTY))
         val firstSymbol = style.layers.firstOrNull { it is SymbolLayer }?.id
         val casing = LineLayer(ROUTE_CASING, ROUTE_SRC).withProperties(
@@ -179,12 +174,6 @@ fun RyMapView(
             style.addLayer(casing)
             style.addLayer(line)
         }
-        style.addLayer(
-            SymbolLayer(MARKERS_LAYER, MARKERS_SRC).withProperties(
-                iconImage(PIN), iconSize(0.7f), iconAnchor(Property.ICON_ANCHOR_BOTTOM),
-                iconAllowOverlap(true), iconIgnorePlacement(true),
-            )
-        )
         style.addLayer(
             SymbolLayer(SELECTED_LAYER, SELECTED_SRC).withProperties(
                 iconImage(PIN), iconSize(1f), iconAnchor(Property.ICON_ANCHOR_BOTTOM),
@@ -231,11 +220,6 @@ fun RyMapView(
             )
             map.addOnMapClickListener { latLng ->
                 val px = map.projection.toScreenLocation(latLng)
-                val own = map.queryRenderedFeatures(px, MARKERS_LAYER)
-                if (own.isNotEmpty()) {
-                    tapCb(MapTap(GeoPoint(latLng.latitude, latLng.longitude), null, null, own.first().getStringProperty("id")))
-                    return@addOnMapClickListener true
-                }
                 var tap = MapTap(GeoPoint(latLng.latitude, latLng.longitude), null, null, null)
                 for (f in map.queryRenderedFeatures(px)) {
                     val json = runCatching { JSONObject(f.toJson()) }.getOrNull() ?: continue
@@ -256,10 +240,6 @@ fun RyMapView(
                 true
             }
             map.addOnCameraMoveListener { bearingCb(map.cameraPosition.bearing.toFloat()) }
-            map.addOnCameraIdleListener {
-                val b = map.projection.visibleRegion.latLngBounds
-                viewportCb(GeoBounds(b.latitudeSouth, b.longitudeWest, b.latitudeNorth, b.longitudeEast))
-            }
             loadStyle(map, currentStyleUrl)
             mapReady = true
         }
@@ -286,10 +266,6 @@ fun RyMapView(
     LaunchedEffect(route, styleVersion) {
         val json = withContext(Dispatchers.Default) { lineJson(route) }
         holder.style?.getSourceAs<GeoJsonSource>(ROUTE_SRC)?.setGeoJson(json)
-    }
-    LaunchedEffect(markers, styleVersion) {
-        val json = withContext(Dispatchers.Default) { pointsJson(markers) }
-        holder.style?.getSourceAs<GeoJsonSource>(MARKERS_SRC)?.setGeoJson(json)
     }
     LaunchedEffect(selected, styleVersion) {
         val json = withContext(Dispatchers.Default) { pointsJson(listOfNotNull(selected)) }
@@ -326,6 +302,10 @@ fun RyMapView(
         }
         holder.trackingListener = listener
         lc.addOnCameraTrackingChangedListener(listener)
+        if (followingNow) {
+            lc.renderMode = RenderMode.COMPASS
+            lc.cameraMode = CameraMode.TRACKING
+        }
     }
 
     LaunchedEffect(location, styleVersion, hasPermission) {

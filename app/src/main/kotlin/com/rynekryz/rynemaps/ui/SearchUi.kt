@@ -138,6 +138,7 @@ fun SearchOverlay(
 
 @Composable
 fun SavedScreen(saved: List<Place>, onOpen: (Place) -> Unit, onRemove: (Place) -> Unit) {
+    val haptics = rememberHaptics()
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.statusBarsPadding()) {
             Text(
@@ -166,7 +167,7 @@ fun SavedScreen(saved: List<Place>, onOpen: (Place) -> Unit, onRemove: (Place) -
                             p.icon, p.name, p.address.ifBlank { p.subtitle },
                             onClick = { onOpen(p) },
                             trailing = {
-                                IconButton(onClick = { onRemove(p) }) {
+                                IconButton(onClick = { haptics.click(); onRemove(p) }) {
                                     Symbol("bookmark_added", tint = MaterialTheme.colorScheme.primary)
                                 }
                             },

@@ -9,9 +9,7 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rynekryz.rynemaps.data.Api
-import com.rynekryz.rynemaps.data.Category
 import com.rynekryz.rynemaps.data.Geo
-import com.rynekryz.rynemaps.data.GeoBounds
 import com.rynekryz.rynemaps.data.GeoPoint
 import com.rynekryz.rynemaps.data.LocationRepository
 import com.rynekryz.rynemaps.data.MY_LOCATION
@@ -86,9 +84,6 @@ data class UiState(
     val following: Boolean = false,
     val selected: Place? = null,
     val loadingPlace: Boolean = false,
-    val activeCategory: Category? = null,
-    val categoryLoading: Boolean = false,
-    val markers: List<Place> = emptyList(),
     val searchTarget: SearchTarget? = null,
     val query: String = "",
     val results: List<Place> = emptyList(),
@@ -101,7 +96,7 @@ data class UiState(
 ) {
     val canGoBack: Boolean
         get() = searchTarget != null || navigation != null || directions != null ||
-            selected != null || activeCategory != null || tab != Tab.Explore
+            selected != null || tab != Tab.Explore
 }
 
 @OptIn(FlowPreview::class)
@@ -130,8 +125,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     private var locationJob: Job? = null
     private var routeJob: Job? = null
     private var reverseJob: Job? = null
-    private var categoryJob: Job? = null
-    private var viewport: GeoBounds? = null
     private var lastGps = 0L
     private var offRouteCount = 0
     private var announcedStep = -1
@@ -245,16 +238,14 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun setFollowing(value: Boolean) = _state.update { it.copy(following = value) }
 
     fun follow() {
-        if (_state.value.location == null) _toasts.tryEmit("Waiting for your location")
-        _camera.tryEmit(CameraCommand.Follow(true, _state.value.navigation != null))
+        val s = _state.value
+        if (!s.hasPermission) _toasts.tryEmit("Waiting for your location")
+        _state.update { it.copy(following = true) }
+        _camera.tryEmit(CameraCommand.Follow(true, s.navigation != null))
     }
 
     fun resetNorth() {
         _camera.tryEmit(CameraCommand.ResetNorth)
-    }
-
-    fun setViewport(bounds: GeoBounds) {
-        viewport = bounds
     }
 
     fun setTab(tab: Tab) = _state.update { it.copy(tab = tab) }
@@ -305,7 +296,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             }
             else -> {
                 remember(place)
-                clearCategory()
                 _state.update { it.copy(searchTarget = null, query = "", tab = Tab.Explore) }
                 selectPlace(place)
             }
@@ -364,9 +354,9 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onMapTap(tap: MapTap) {
+        if (tap.markerId != null) return
         val s = _state.value
         when {
-            tap.markerId != null -> s.markers.firstOrNull { it.id == tap.markerId }?.let { selectPlace(it, fly = false) }
             tap.name != null -> {
                 if (s.directions != null) return
                 val kind = tap.kind.orEmpty().replace('_', ' ').replaceFirstChar { it.uppercase() }
@@ -406,45 +396,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun openSaved(place: Place) {
         _state.update { it.copy(tab = Tab.Explore) }
         selectPlace(place)
-    }
-
-    fun selectCategory(cat: Category) {
-        if (_state.value.activeCategory?.id == cat.id) {
-            clearCategory()
-            return
-        }
-        val vp = viewport
-        if (vp == null) {
-            _toasts.tryEmit("The map is still loading")
-            return
-        }
-        val clat = (vp.south + vp.north) / 2
-        val clon = (vp.west + vp.east) / 2
-        val halfLat = minOf((vp.north - vp.south) / 2, 0.05)
-        val halfLon = minOf((vp.east - vp.west) / 2, 0.06)
-        categoryJob?.cancel()
-        _state.update {
-            it.copy(activeCategory = cat, categoryLoading = true, markers = emptyList(), selected = null)
-        }
-        categoryJob = viewModelScope.launch {
-            val result = runCatching {
-                Api.nearby(cat, clat - halfLat, clon - halfLon, clat + halfLat, clon + halfLon)
-            }
-            val center = GeoPoint(clat, clon)
-            result.onSuccess { list ->
-                val sorted = list.sortedBy { Geo.distance(center, it.point) }.take(50)
-                _state.update { it.copy(markers = sorted, categoryLoading = false) }
-                if (sorted.isEmpty()) _toasts.tryEmit("Nothing found here. Zoom in or move the map.")
-            }.onFailure {
-                _state.update { it.copy(categoryLoading = false) }
-                _toasts.tryEmit("Couldn't load places. Try again in a moment.")
-            }
-        }
-    }
-
-    fun clearCategory() {
-        categoryJob?.cancel()
-        _state.update { it.copy(activeCategory = null, markers = emptyList(), categoryLoading = false) }
     }
 
     fun startDirections(destination: Place?) {
@@ -636,7 +587,6 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
             s.navigation != null -> exitNavigation()
             s.directions != null -> closeDirections()
             s.selected != null -> clearSelection()
-            s.activeCategory != null -> clearCategory()
             s.tab != Tab.Explore -> setTab(Tab.Explore)
         }
     }

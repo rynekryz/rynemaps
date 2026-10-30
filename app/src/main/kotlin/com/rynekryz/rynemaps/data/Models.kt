@@ -52,26 +52,6 @@ enum class MapStyleOption(val label: String, val icon: String, val url: String) 
     Night("Night", "dark_mode", "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"),
 }
 
-data class Category(
-    val id: String,
-    val label: String,
-    val icon: String,
-    val key: String,
-    val values: String,
-)
-
-val Categories = listOf(
-    Category("restaurants", "Restaurants", "restaurant", "amenity", "restaurant|fast_food"),
-    Category("coffee", "Coffee", "local_cafe", "amenity", "cafe"),
-    Category("gas", "Gas", "local_gas_station", "amenity", "fuel"),
-    Category("groceries", "Groceries", "local_grocery_store", "shop", "supermarket|convenience|greengrocer"),
-    Category("hotels", "Hotels", "hotel", "tourism", "hotel|hostel|guest_house|motel"),
-    Category("pharmacies", "Pharmacies", "local_pharmacy", "amenity", "pharmacy"),
-    Category("atms", "ATMs", "local_atm", "amenity", "atm"),
-    Category("parks", "Parks", "park", "leisure", "park|garden"),
-    Category("hospitals", "Hospitals", "local_hospital", "amenity", "hospital|clinic"),
-)
-
 data class RouteStep(
     val text: String,
     val icon: String,

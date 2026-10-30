@@ -4,6 +4,9 @@ package com.rynekryz.rynemaps.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,15 +25,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.rynekryz.rynemaps.data.MapStyleOption
 import com.rynekryz.rynemaps.ui.theme.Symbol
 
 @Composable
 fun LayersSheet(current: MapStyleOption, onSelect: (MapStyleOption) -> Unit, onDismiss: () -> Unit) {
+    val haptics = rememberHaptics()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text("Map type", style = MaterialTheme.typography.titleLarge)
@@ -40,8 +46,20 @@ fun LayersSheet(current: MapStyleOption, onSelect: (MapStyleOption) -> Unit, onD
             ) {
                 MapStyleOption.entries.forEach { option ->
                     val selected = option == current
+                    val scale by animateFloatAsState(
+                        targetValue = if (selected) 1.06f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                        label = "layer-scale",
+                    )
                     Column(
-                        Modifier.clip(RoundedCornerShape(16.dp)).clickable { onSelect(option) }.padding(4.dp),
+                        Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { haptics.click(); onSelect(option) }
+                            .padding(4.dp)
+                            .graphicsLayer { scaleX = scale; scaleY = scale },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Surface(

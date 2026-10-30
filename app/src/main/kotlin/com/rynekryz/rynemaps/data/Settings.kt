@@ -13,7 +13,9 @@ enum class UnitsMode(val label: String) { Auto("Auto"), Km("Km"), Miles("Mi") }
 enum class ThemeMode(val label: String) { System("System"), Light("Light"), Dark("Dark") }
 
 data class Settings(
+    val name: String = "Ryne",
     val voice: Boolean = true,
+    val keepScreenOn: Boolean = true,
     val units: UnitsMode = UnitsMode.Auto,
     val theme: ThemeMode = ThemeMode.System,
     val avatarVersion: Int = 0,
@@ -29,7 +31,9 @@ class SettingsStore(private val context: Context) {
         val units = runCatching { UnitsMode.valueOf(o.getString("units")) }.getOrDefault(UnitsMode.Auto)
         val theme = runCatching { ThemeMode.valueOf(o.getString("theme")) }.getOrDefault(ThemeMode.System)
         return Settings(
+            name = o.optString("name", "Ryne"),
             voice = o.optBoolean("voice", true),
+            keepScreenOn = o.optBoolean("keepScreenOn", true),
             units = units,
             theme = theme,
         )
@@ -37,7 +41,9 @@ class SettingsStore(private val context: Context) {
 
     fun save(settings: Settings) {
         val o = JSONObject()
+            .put("name", settings.name)
             .put("voice", settings.voice)
+            .put("keepScreenOn", settings.keepScreenOn)
             .put("units", settings.units.name)
             .put("theme", settings.theme.name)
         prefs.edit().putString("settings", o.toString()).apply()

@@ -105,39 +105,62 @@ object Api {
         )
     }
 
+    private val overpassEndpoints = listOf(
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+    )
+
     suspend fun nearby(cat: Category, south: Double, west: Double, north: Double, east: Double): List<Place> {
         val filter = "[\"${cat.key}\"~\"^(${cat.values})\$\"]"
         val q = "[out:json][timeout:20];nwr$filter($south,$west,$north,$east);out center 80;"
-        val req = Request.Builder()
-            .url("https://overpass-api.de/api/interpreter")
-            .post(FormBody.Builder().add("data", q).build())
-            .build()
-        val elements = JSONObject(fetch(req)).getJSONArray("elements")
-        return buildList {
-            for (i in 0 until elements.length()) {
-                val el = elements.getJSONObject(i)
-                val tags = el.optJSONObject("tags") ?: continue
-                val point = if (el.has("lat")) {
-                    GeoPoint(el.getDouble("lat"), el.getDouble("lon"))
-                } else {
-                    val c = el.optJSONObject("center") ?: continue
-                    GeoPoint(c.getDouble("lat"), c.getDouble("lon"))
+        val req = { endpoint: String ->
+            Request.Builder().url(endpoint).post(FormBody.Builder().add("data", q).build()).build()
+        }
+        var lastError: Throwable? = null
+        repeat(2) { attempt ->
+            for (endpoint in overpassEndpoints) {
+                try {
+                    val body = fetch(req(endpoint))
+                    val elements = JSONObject(body).getJSONArray("elements")
+                    return parseNearby(elements, cat)
+                } catch (e: InterruptedException) {
+                    throw e
+                } catch (e: Throwable) {
+                    lastError = e
                 }
-                val name = tags.str("name").ifBlank { tags.str("brand") }.ifBlank { cat.label.removeSuffix("s") }
-                val street = listOf(tags.str("addr:street"), tags.str("addr:housenumber"))
-                    .filter { it.isNotBlank() }.joinToString(" ")
-                val address = listOf(street, tags.str("addr:city")).filter { it.isNotBlank() }.joinToString(", ")
-                add(
-                    Place(
-                        id = "osm:" + el.getString("type") + el.getLong("id"),
-                        name = name,
-                        subtitle = cat.label.removeSuffix("s"),
-                        address = address,
-                        point = point,
-                        icon = cat.icon,
-                    )
-                )
             }
+            if (attempt == 0) withContext(Dispatchers.IO) { Thread.sleep(1500) }
+        }
+        throw lastError ?: IOException("Overpass unavailable")
+    }
+
+    private fun parseNearby(bodyElements: org.json.JSONArray, cat: Category): List<Place> = buildList {
+        val elements = bodyElements
+        for (i in 0 until elements.length()) {
+            val el = elements.getJSONObject(i)
+            val tags = el.optJSONObject("tags") ?: continue
+            val point = if (el.has("lat")) {
+                GeoPoint(el.getDouble("lat"), el.getDouble("lon"))
+            } else {
+                val c = el.optJSONObject("center") ?: continue
+                GeoPoint(c.getDouble("lat"), c.getDouble("lon"))
+            }
+            val name = tags.str("name").ifBlank { tags.str("brand") }.ifBlank { cat.label.removeSuffix("s") }
+            val street = listOf(tags.str("addr:street"), tags.str("addr:housenumber"))
+                .filter { it.isNotBlank() }.joinToString(" ")
+            val address = listOf(street, tags.str("addr:city")).filter { it.isNotBlank() }.joinToString(", ")
+            add(
+                Place(
+                    id = "osm:" + el.getString("type") + el.getLong("id"),
+                    name = name,
+                    subtitle = cat.label.removeSuffix("s"),
+                    address = address,
+                    point = point,
+                    icon = cat.icon,
+                )
+            )
         }
     }
 

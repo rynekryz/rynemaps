@@ -5,6 +5,8 @@ package com.rynekryz.rynemaps.ui
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedFilterChip
@@ -30,17 +33,21 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rynekryz.rynemaps.data.Categories
 import com.rynekryz.rynemaps.data.Category
@@ -48,20 +55,31 @@ import com.rynekryz.rynemaps.data.Place
 import com.rynekryz.rynemaps.ui.theme.Symbol
 
 @Composable
-fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, avatar: android.graphics.Bitmap?, modifier: Modifier = Modifier) {
+fun SearchPill(
+    onClick: () -> Unit,
+    onAvatar: () -> Unit,
+    avatar: android.graphics.Bitmap?,
+    name: String,
+    modifier: Modifier = Modifier,
+) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 60.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
         shadowElevation = 6.dp,
     ) {
         Row(
-            Modifier.padding(start = 18.dp, end = 8.dp).heightIn(min = 56.dp),
+            Modifier.padding(start = 14.dp, end = 12.dp).heightIn(min = 60.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Symbol("search", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(14.dp))
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Symbol("search", size = 20.dp, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+            }
+            Spacer(Modifier.width(12.dp))
             Text(
                 "Search here",
                 modifier = Modifier.weight(1f),
@@ -69,10 +87,7 @@ fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, avatar: android.graphi
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer)
+                Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable(onClick = onAvatar),
                 contentAlignment = Alignment.Center,
             ) {
@@ -84,7 +99,11 @@ fun SearchPill(onClick: () -> Unit, onAvatar: () -> Unit, avatar: android.graphi
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
-                    Text("R", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(
+                        name.trim().take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
                 }
             }
         }
@@ -165,7 +184,7 @@ fun PlaceSheet(
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
-                    if (loading) CircularProgressIndicator(Modifier.size(32.dp))
+                    if (loading) CircularProgressIndicator(Modifier.size(40.dp))
                 }
             }
         }

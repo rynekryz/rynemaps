@@ -26,6 +26,10 @@ class SavedStore(context: Context) {
         prefs.edit().remove("recents").apply()
     }
 
+    fun clearSaved() {
+        prefs.edit().remove("saved").apply()
+    }
+
     private fun read(key: String): List<Place> = runCatching {
         val a = JSONArray(prefs.getString(key, "[]"))
         List(a.length()) { Place.fromJson(a.getJSONObject(it)) }

@@ -173,6 +173,16 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         updateSettings { it.copy(voice = on) }
     }
 
+    fun setName(name: String) {
+        updateSettings { it.copy(name = name.trim().take(24)) }
+    }
+
+    fun setKeepScreenOn(on: Boolean) = updateSettings { it.copy(keepScreenOn = on) }
+
+    fun testVoice() {
+        voiceGuide.speak("Voice guidance is on. In 100 meters, turn left onto Example Street.")
+    }
+
     fun setUnits(units: UnitsMode) = updateSettings { it.copy(units = units) }
 
     fun setTheme(theme: ThemeMode) = updateSettings { it.copy(theme = theme) }
@@ -206,6 +216,11 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
     fun clearRecents() {
         store.clearRecents()
         _state.update { it.copy(recents = emptyList()) }
+    }
+
+    fun clearSaved() {
+        store.clearSaved()
+        _state.update { it.copy(saved = emptyList()) }
     }
 
     fun onPermission(granted: Boolean) {

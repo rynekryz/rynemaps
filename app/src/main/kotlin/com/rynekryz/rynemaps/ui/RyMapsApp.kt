@@ -3,7 +3,10 @@
 package com.rynekryz.rynemaps.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,14 +27,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +77,7 @@ fun RyMapsApp(vm: MapViewModel) {
     var sheetHeight by remember { mutableIntStateOf(0) }
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showLocationPrompt by remember { mutableStateOf(false) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) vm.setAvatar(uri)
     }
@@ -80,7 +90,20 @@ fun RyMapsApp(vm: MapViewModel) {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
     fun locate() {
-        if (hasPermission()) vm.follow() else launcher.launch(permissions)
+        if (!hasPermission()) {
+            launcher.launch(permissions)
+            return
+        }
+        val lm = context.getSystemService(LocationManager::class.java)
+        val anyEnabled = listOf(
+            runCatching { lm.isProviderEnabled(LocationManager.GPS_PROVIDER) }.getOrDefault(false),
+            runCatching { lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false),
+        ).any { it }
+        if (!anyEnabled) {
+            showLocationPrompt = true
+            return
+        }
+        vm.follow()
     }
 
     LaunchedEffect(Unit) {
@@ -95,11 +118,12 @@ fun RyMapsApp(vm: MapViewModel) {
     val nav = state.navigation
     val directions = state.directions
     val navigating = nav != null
-    DisposableEffect(navigating) {
-        view.keepScreenOn = navigating
+    DisposableEffect(navigating, settings.keepScreenOn) {
+        view.keepScreenOn = navigating && settings.keepScreenOn
         onDispose { view.keepScreenOn = false }
     }
     BackHandler(enabled = state.canGoBack) { vm.back() }
+    BackHandler(enabled = showSettings) { showSettings = false }
 
     val styleUrl = (state.mapStyle ?: if (dark) MapStyleOption.Night else MapStyleOption.Default).url
     val pin = directions?.destination?.takeIf { it.id != MY_LOCATION.id } ?: state.selected
@@ -135,26 +159,24 @@ fun RyMapsApp(vm: MapViewModel) {
                     onClick = { vm.openSearch(SearchTarget.Main) },
                     onAvatar = { showSettings = true },
                     avatar = avatar,
+                    name = settings.name,
                 )
                 Spacer(Modifier.size(8.dp))
                 CategoryChips(state.activeCategory, vm::selectCategory)
             }
-            Column(
-                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 132.dp, end = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                SmallFloatingActionButton(
-                    onClick = { vm.showLayers(true) },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ) { Symbol("layers") }
-                if (abs(bearing) > 1f) {
-                    SmallFloatingActionButton(
-                        onClick = vm::resetNorth,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ) { Symbol("navigation", modifier = Modifier.rotate(-bearing)) }
+            Column(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 132.dp, end = 16.dp), horizontalAlignment = Alignment.End) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 4.dp,
+                ) {
+                    Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(onClick = { vm.showLayers(true) }) { Symbol("layers") }
+                        if (abs(bearing) > 1f) {
+                            HorizontalDivider(Modifier.padding(horizontal = 8.dp))
+                            IconButton(onClick = vm::resetNorth) { Symbol("navigation", modifier = Modifier.rotate(-bearing)) }
+                        }
+                    }
                 }
             }
         }
@@ -284,12 +306,16 @@ fun RyMapsApp(vm: MapViewModel) {
         )
     }
     if (showSettings) {
-        SettingsSheet(
+        SettingsScreen(
             settings = settings,
             avatar = avatar,
             recentsCount = state.recents.size,
+            savedCount = state.saved.size,
             onDismiss = { showSettings = false },
+            onName = vm::setName,
             onVoice = vm::setVoice,
+            onTestVoice = vm::testVoice,
+            onKeepScreenOn = vm::setKeepScreenOn,
             onUnits = vm::setUnits,
             onTheme = vm::setTheme,
             onPickPhoto = {
@@ -297,6 +323,7 @@ fun RyMapsApp(vm: MapViewModel) {
             },
             onRemovePhoto = vm::removeAvatar,
             onClearRecents = vm::clearRecents,
+            onClearSaved = vm::clearSaved,
             onAbout = {
                 showSettings = false
                 showAbout = true
@@ -304,4 +331,24 @@ fun RyMapsApp(vm: MapViewModel) {
         )
     }
     if (showAbout) AboutDialog { showAbout = false }
+    if (showLocationPrompt) {
+        AlertDialog(
+            onDismissRequest = { showLocationPrompt = false },
+            title = { Text("Location is off") },
+            text = { Text("Before you continue, turn on location so RyMaps can find you and guide you turn by turn.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLocationPrompt = false
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationPrompt = false }) { Text("Not now") }
+            },
+        )
+    }
 }

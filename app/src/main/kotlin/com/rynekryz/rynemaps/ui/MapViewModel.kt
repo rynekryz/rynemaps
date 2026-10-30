@@ -29,6 +29,7 @@ import com.rynekryz.rynemaps.util.toGeo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -477,8 +478,13 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         voiceGuide.stop()
         _state.update { it.copy(navigation = null) }
         _camera.tryEmit(CameraCommand.Follow(on = false))
-        _camera.tryEmit(CameraCommand.ResetNorth)
-        _state.value.directions?.route?.let { _camera.tryEmit(CameraCommand.Fit(it.points)) }
+        viewModelScope.launch {
+            _camera.tryEmit(CameraCommand.ResetNorth)
+            delay(600)
+            _state.value.directions?.let { d ->
+                _camera.tryEmit(CameraCommand.FlyTo(d.destination?.point ?: return@launch, 15.5))
+            }
+        }
     }
 
     private fun advance(nav: NavState, loc: Location) {

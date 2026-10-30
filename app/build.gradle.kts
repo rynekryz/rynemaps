@@ -14,8 +14,8 @@ android {
         applicationId = "com.rynekryz.rynemaps"
         minSdk = 31
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.1.1-beta"
+        versionCode = 5
+        versionName = "1.1.2-beta"
     }
 
     buildTypes {
@@ -50,8 +50,6 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    // Pinned above the BOM: M3 expressive motion (MotionScheme.expressive) is public
-    // starting with material3 1.5.0.
     implementation("androidx.compose.material3:material3:1.5.0-beta02")
     implementation("androidx.compose.material3:material3-adaptive-navigation-suite")
     implementation("androidx.core:core-ktx:1.17.0")
